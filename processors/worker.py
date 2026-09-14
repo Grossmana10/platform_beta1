@@ -106,11 +106,16 @@ class Client:
 
 
 def main():
-    client = Client()
+    configured = bool(os.environ.get("PLATFORM_ORIGIN") and os.environ.get("WAVEFORM_WORKER_SECRET"))
+    client = Client() if configured else None
     ffmpeg_binary()  # Fail startup if the native decoder is unavailable.
     stop = threading.Event()
 
     def consume():
+        if client is None:
+            print("waveform_configuration_required", flush=True)
+            stop.wait()
+            return
         while not stop.is_set():
             try:
                 job = client.claim()
@@ -130,7 +135,7 @@ def main():
                 self.send_error(404)
                 return
             ok = consumer.is_alive() and not stop.is_set()
-            body = b'{"status":"running"}' if ok else b'{"status":"stopped"}'
+            body = (b'{"status":"running"}' if configured else b'{"status":"configuration_required"}') if ok else b'{"status":"stopped"}'
             self.send_response(200 if ok else 503)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
